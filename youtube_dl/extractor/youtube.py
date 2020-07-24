@@ -77,7 +77,7 @@ class YoutubeBaseInfoExtractor(InfoExtractor):
 
     def _set_language(self):
         self._set_cookie(
-            '.youtube.com', 'PREF', 'f1=50000000&hl=en',
+            '.youtube.com', 'PREF', 'f1=50000000&f6=8&hl=en',
             # YouTube sets the expire time to about two months
             expire_time=time.time() + 2 * 30 * 24 * 3600)
 
@@ -303,7 +303,7 @@ class YoutubeEntryListBaseInfoExtractor(YoutubeBaseInfoExtractor):
                     # Downloading page may result in intermittent 5xx HTTP error
                     # that is usually worked around with a retry
                     more = self._download_json(
-                        'https://youtube.com/%s' % mobj.group('more'), playlist_id,
+                        'https://www.youtube.com/%s' % mobj.group('more'), playlist_id,
                         'Downloading page #%s%s'
                         % (page_num, ' (retry #%d)' % count if count else ''),
                         transform_source=uppercase_escape,
@@ -1930,7 +1930,7 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
             ''', replace_url, video_description)
             video_description = clean_html(video_description)
         else:
-            video_description = self._html_search_meta('description', video_webpage) or video_details.get('shortDescription')
+            video_description = video_details.get('shortDescription') or self._html_search_meta('description', video_webpage)
 
         if not smuggled_data.get('force_singlefeed', False):
             if not self._downloader.params.get('noplaylist'):
@@ -2356,17 +2356,21 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
         m_cat_container = self._search_regex(
             r'(?s)<h4[^>]*>\s*Category\s*</h4>\s*<ul[^>]*>(.*?)</ul>',
             video_webpage, 'categories', default=None)
+        category = None
         if m_cat_container:
             category = self._html_search_regex(
                 r'(?s)<a[^<]+>(.*?)</a>', m_cat_container, 'category',
                 default=None)
-            video_categories = None if category is None else [category]
-        else:
-            video_categories = None
+        if not category:
+            category = try_get(
+                microformat, lambda x: x['category'], compat_str)
+        video_categories = None if category is None else [category]
 
         video_tags = [
             unescapeHTML(m.group('content'))
             for m in re.finditer(self._meta_regex('og:video:tag'), video_webpage)]
+        if not video_tags:
+            video_tags = try_get(video_details, lambda x: x['keywords'], list)
 
         def _extract_count(count_name):
             return str_to_int(self._search_regex(
@@ -2772,7 +2776,7 @@ class YoutubePlaylistIE(YoutubePlaylistBaseInfoExtractor):
         ids = []
         last_id = playlist_id[-11:]
         for n in itertools.count(1):
-            url = 'https://youtube.com/watch?v=%s&list=%s' % (last_id, playlist_id)
+            url = 'https://www.youtube.com/watch?v=%s&list=%s' % (last_id, playlist_id)
             webpage = self._download_webpage(
                 url, playlist_id, 'Downloading page {0} of Youtube mix'.format(n))
             new_ids = orderedSet(re.findall(
@@ -3112,7 +3116,7 @@ class YoutubeLiveIE(YoutubeBaseInfoExtractor):
 
 class YoutubePlaylistsIE(YoutubePlaylistsBaseInfoExtractor):
     IE_DESC = 'YouTube.com user/channel playlists'
-    _VALID_URL = r'https?://(?:\w+\.)?youtube\.com/(?:user|channel)/(?P<id>[^/]+)/playlists'
+    _VALID_URL = r'https?://(?:\w+\.)?youtube\.com/(?:user|channel|c)/(?P<id>[^/]+)/playlists'
     IE_NAME = 'youtube:playlists'
 
     _TESTS = [{
@@ -3138,6 +3142,9 @@ class YoutubePlaylistsIE(YoutubePlaylistsBaseInfoExtractor):
             'title': 'Chem Player',
         },
         'skip': 'Blocked',
+    }, {
+        'url': 'https://www.youtube.com/c/ChristophLaimer/playlists',
+        'only_matching': True,
     }]
 
 
@@ -3282,7 +3289,7 @@ class YoutubeFeedsInfoExtractor(YoutubeBaseInfoExtractor):
                 break
 
             more = self._download_json(
-                'https://youtube.com/%s' % mobj.group('more'), self._PLAYLIST_TITLE,
+                'https://www.youtube.com/%s' % mobj.group('more'), self._PLAYLIST_TITLE,
                 'Downloading page #%s' % page_num,
                 transform_source=uppercase_escape,
                 headers=self._YOUTUBE_CLIENT_HEADERS)
